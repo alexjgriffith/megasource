@@ -228,6 +228,7 @@ message(STATUS "-----------------------------------------------------")
 add_subdirectory("libs/freetype-${MEGA_FREETYPE_VER}" ${CMAKE_BINARY_DIR}/freetype)
 set(MEGA_FREETYPE freetype)
 
+if (NOT EMSCRIPTEN) # emscripten supports openal and sdl2 without linking
 message(STATUS "-----------------------------------------------------")
 message(STATUS "Configuring: SDL2 ${MEGA_SDL2_VER}")
 message(STATUS "-----------------------------------------------------")
@@ -240,6 +241,7 @@ message(STATUS "Configuring: openal-soft ${MEGA_OPENAL_VER}")
 message(STATUS "-----------------------------------------------------")
 add_subdirectory("libs/openal-soft" ${CMAKE_BINARY_DIR}/openal-soft)
 set(MEGA_OPENAL ${OPENAL_LIB_NAME})
+endif (NOT EMSCRIPTEN)
 
 message(STATUS "-----------------------------------------------------")
 message(STATUS "Configuring: libmodplug ${MEGA_MODPLUG_VER}")
@@ -321,6 +323,8 @@ else()
 endif()
 
 link_directories(${SDL_LINK_DIR})
+
+if (NOT EMSCRIPTEN)
 add_executable(megatest src/test.cpp)
 target_link_libraries(megatest ${MEGA_3P})
 
@@ -328,3 +332,4 @@ add_move_dll(megatest ${MEGA_MPEG123})
 add_move_dll(megatest ${MEGA_SDL2})
 add_move_dll(megatest ${MEGA_OPENAL})
 add_move_dll(megatest ${MEGA_LUA51})
+endif (NOT EMSCRIPTEN)
