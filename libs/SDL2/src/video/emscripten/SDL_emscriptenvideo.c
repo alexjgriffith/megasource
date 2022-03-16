@@ -352,7 +352,11 @@ Emscripten_SetWindowFullscreen(_THIS, SDL_Window * window, SDL_VideoDisplay * di
 
 static void
 Emscripten_SetWindowTitle(_THIS, SDL_Window * window) {
-    emscripten_set_window_title(window->title);
+  /* // previously present in the Emscription LOVE.JS branch
+     if (typeof setWindowTitle !== 'undefined') { 
+     setWindowTitle(UTF8ToString($0)); 
+     }*/
+    emscripten_set_window_title (window->title);
 }
 
 #endif /* SDL_VIDEO_DRIVER_EMSCRIPTEN */
