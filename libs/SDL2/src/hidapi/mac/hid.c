@@ -17,11 +17,9 @@
  files located at the root of the source distribution.
  These files may also be found in the public source
  code repository located at:
- http://github.com/signal11/hidapi .
+ https://github.com/libusb/hidapi .
  ********************************************************/
 #include "../../SDL_internal.h"
-
-#ifdef SDL_JOYSTICK_HIDAPI
 
 /* See Apple Technical Note TN2187 for details on IOHidManager. */
 
@@ -29,12 +27,13 @@
 #include <IOKit/hid/IOHIDKeys.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <wchar.h>
-#include <locale.h>
 #include <pthread.h>
 #include <sys/time.h>
 #include <unistd.h>
 
-#include "hidapi.h"
+#include "../hidapi/hidapi.h"
+
+#define VALVE_USB_VID		0x28DE
 
 /* Barrier implementation because Mac OSX doesn't have pthread_barrier.
  It also doesn't have clock_gettime(). So much for POSIX and SUSv2.
@@ -42,10 +41,10 @@
  StackOverflow. It is used with his permission. */
 typedef int pthread_barrierattr_t;
 typedef struct pthread_barrier {
-    pthread_mutex_t mutex;
-    pthread_cond_t cond;
-    int count;
-    int trip_count;
+	pthread_mutex_t mutex;
+	pthread_cond_t cond;
+	int count;
+	int trip_count;
 } pthread_barrier_t;
 
 static int pthread_barrier_init(pthread_barrier_t *barrier, const pthread_barrierattr_t *attr, unsigned int count)
@@ -179,22 +178,22 @@ static void free_hid_device(hid_device *dev)
 	free(dev->input_report_buf);
 
 	if (device_list) {
-    	if (device_list->dev == dev) {
-    		device_list = device_list->next;
-    	}
-    	else {
-    		struct hid_device_list_node *node = device_list;
-    		while (node) {
-    			if (node->next && node->next->dev == dev) {
-    				struct hid_device_list_node *new_next = node->next->next;
-    				free(node->next);
-    				node->next = new_next;
-    				break;
-    			}
+		if (device_list->dev == dev) {
+			device_list = device_list->next;
+		}
+		else {
+			struct hid_device_list_node *node = device_list;
+			while (node) {
+				if (node->next && node->next->dev == dev) {
+					struct hid_device_list_node *new_next = node->next->next;
+					free(node->next);
+					node->next = new_next;
+					break;
+				}
 
-    			node = node->next;
-    		}
-    	}
+				node = node->next;
+			}
+		}
 	}
 	
 	/* Clean up the thread objects */
@@ -252,7 +251,10 @@ static int get_string_property(IOHIDDeviceRef device, CFStringRef prop, wchar_t 
 	
 	if (!len)
 		return 0;
-	
+
+	if (CFGetTypeID(prop) != CFStringGetTypeID())
+		return 0;
+
 	str = (CFStringRef)IOHIDDeviceGetProperty(device, prop);
 	
 	buf[0] = 0;
@@ -289,6 +291,9 @@ static int get_string_property_utf8(IOHIDDeviceRef device, CFStringRef prop, cha
 	if (!len)
 		return 0;
 	
+	if (CFGetTypeID(prop) != CFStringGetTypeID())
+		return 0;
+
 	str = (CFStringRef)IOHIDDeviceGetProperty(device, prop);
 	
 	buf[0] = 0;
@@ -321,7 +326,10 @@ static int get_string_property_utf8(IOHIDDeviceRef device, CFStringRef prop, cha
 
 static int get_serial_number(IOHIDDeviceRef device, wchar_t *buf, size_t len)
 {
-	return get_string_property(device, CFSTR(kIOHIDSerialNumberKey), buf, len);
+	// This crashes on M1 Macs, tracked by radar bug 79667729
+	//return get_string_property(device, CFSTR(kIOHIDSerialNumberKey), buf, len);
+	buf[0] = 0;
+	return 0;
 }
 
 static int get_manufacturer_string(IOHIDDeviceRef device, wchar_t *buf, size_t len)
@@ -372,19 +380,107 @@ static int make_path(IOHIDDeviceRef device, char *buf, size_t len)
 	return res+1;
 }
 
+static void hid_device_removal_callback(void *context, IOReturn result,
+                                        void *sender, IOHIDDeviceRef hid_ref)
+{
+	// The device removal callback is sometimes called even after being
+	// unregistered, leading to a crash when trying to access fields in
+	// the already freed hid_device. We keep a linked list of all created
+	// hid_device's so that the one being removed can be checked against
+	// the list to see if it really hasn't been closed yet and needs to
+	// be dealt with here.
+	struct hid_device_list_node *node = device_list;
+	while (node) {
+		if (node->dev->device_handle == hid_ref) {
+			node->dev->disconnected = 1;
+			CFRunLoopStop(node->dev->run_loop);
+			break;
+		}
+
+		node = node->next;
+	}
+}
+
+static CFDictionaryRef
+create_usage_match(const UInt32 page, const UInt32 usage, int *okay)
+{
+	CFDictionaryRef retval = NULL;
+	CFNumberRef pageNumRef = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &page);
+	CFNumberRef usageNumRef = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &usage);
+	const void *keys[2] = { (void *) CFSTR(kIOHIDDeviceUsagePageKey), (void *) CFSTR(kIOHIDDeviceUsageKey) };
+	const void *vals[2] = { (void *) pageNumRef, (void *) usageNumRef };
+
+	if (pageNumRef && usageNumRef) {
+		retval = CFDictionaryCreate(kCFAllocatorDefault, keys, vals, 2, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+	}
+
+	if (pageNumRef) {
+		CFRelease(pageNumRef);
+	}
+	if (usageNumRef) {
+		CFRelease(usageNumRef);
+	}
+
+	if (!retval) {
+		*okay = 0;
+	}
+
+	return retval;
+}
+
+static CFDictionaryRef
+create_vendor_match(const UInt32 vendor, int *okay)
+{
+	CFDictionaryRef retval = NULL;
+	CFNumberRef vidNumRef = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &vendor);
+	const void *keys[1] = { (void *) CFSTR(kIOHIDVendorIDKey) };
+	const void *vals[1] = { (void *) vidNumRef };
+
+	if (vidNumRef) {
+		retval = CFDictionaryCreate(kCFAllocatorDefault, keys, vals, 1, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+		CFRelease(vidNumRef);
+	}
+
+	if (!retval) {
+		*okay = 0;
+	}
+
+	return retval;
+}
+
 /* Initialize the IOHIDManager. Return 0 for success and -1 for failure. */
 static int init_hid_manager(void)
 {
+	int okay = 1;
+	const void *vals[] = {
+		(void *) create_usage_match(kHIDPage_GenericDesktop, kHIDUsage_GD_Joystick, &okay),
+		(void *) create_usage_match(kHIDPage_GenericDesktop, kHIDUsage_GD_GamePad, &okay),
+		(void *) create_usage_match(kHIDPage_GenericDesktop, kHIDUsage_GD_MultiAxisController, &okay),
+		(void *) create_vendor_match(VALVE_USB_VID, &okay),
+	};
+	const size_t numElements = SDL_arraysize(vals);
+	CFArrayRef matchingArray = okay ? CFArrayCreate(kCFAllocatorDefault, vals, numElements, &kCFTypeArrayCallBacks) : NULL;
+	size_t i;
+
+	for (i = 0; i < numElements; i++) {
+		if (vals[i]) {
+			CFRelease((CFTypeRef) vals[i]);
+		}
+	}
 
 	/* Initialize all the HID Manager Objects */
 	hid_mgr = IOHIDManagerCreate(kCFAllocatorDefault, kIOHIDOptionsTypeNone);
 	if (hid_mgr) {
-		IOHIDManagerSetDeviceMatching(hid_mgr, NULL);
+		IOHIDManagerSetDeviceMatchingMultiple(hid_mgr, matchingArray);
 		IOHIDManagerScheduleWithRunLoop(hid_mgr, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
-		return 0;
+		IOHIDManagerRegisterDeviceRemovalCallback(hid_mgr, hid_device_removal_callback, NULL);
 	}
 	
-	return -1;
+	if (matchingArray != NULL) {
+		CFRelease(matchingArray);
+	}
+
+	return hid_mgr ? 0 : -1;
 }
 
 /* Initialize the IOHIDManager if necessary. This is the public function, and
@@ -426,8 +522,6 @@ struct hid_device_info  HID_API_EXPORT *hid_enumerate(unsigned short vendor_id, 
 	CFIndex num_devices;
 	int i;
 	
-	setlocale(LC_ALL,"");
-	
 	/* Set up the HID Manager if it hasn't been done */
 	if (hid_init() < 0)
 		return NULL;
@@ -459,9 +553,19 @@ struct hid_device_info  HID_API_EXPORT *hid_enumerate(unsigned short vendor_id, 
 		
 		IOHIDDeviceRef dev = device_array[i];
 		
-        if (!dev) {
-            continue;
-        }
+		if (!dev) {
+			continue;
+		}
+
+#if defined(SDL_JOYSTICK_MFI)
+		// We want to prefer Game Controller support where available,
+		// as Apple will likely be requiring that for supported devices.
+		extern SDL_bool IOS_SupportedHIDDevice(IOHIDDeviceRef device);
+		if (IOS_SupportedHIDDevice(dev)) {
+			continue;
+		}
+#endif
+
 		dev_vid = get_vendor_id(dev);
 		dev_pid = get_product_id(dev);
 		
@@ -567,30 +671,6 @@ hid_device * HID_API_EXPORT hid_open(unsigned short vendor_id, unsigned short pr
 	hid_free_enumeration(devs);
 	
 	return handle;
-}
-
-static void hid_device_removal_callback(void *context, IOReturn result,
-                                        void *sender)
-{
-	/* Stop the Run Loop for this device. */
-	hid_device *dev = (hid_device *)context;
-
-	// The device removal callback is sometimes called even after being
-	// unregistered, leading to a crash when trying to access fields in
-	// the already freed hid_device. We keep a linked list of all created
-	// hid_device's so that the one being removed can be checked against
-	// the list to see if it really hasn't been closed yet and needs to
-	// be dealt with here.
-	struct hid_device_list_node *node = device_list;
-	while (node) {
-		if (node->dev == dev) {
-			dev->disconnected = 1;
-			CFRunLoopStop(dev->run_loop);
-			break;
-		}
-
-		node = node->next;
-	}
 }
 
 /* The Run Loop calls this function for each input report received.
@@ -766,7 +846,6 @@ hid_device * HID_API_EXPORT hid_open_path(const char *path, int bExclusive)
 				IOHIDDeviceRegisterInputReportCallback(
 													   os_dev, dev->input_report_buf, dev->max_input_report_len,
 													   &hid_report_callback, dev);
-				IOHIDDeviceRegisterRemovalCallback(dev->device_handle, hid_device_removal_callback, dev);
 
 				struct hid_device_list_node *node = (struct hid_device_list_node *)calloc(1, sizeof(struct hid_device_list_node));
 				node->dev = dev;
@@ -1042,7 +1121,6 @@ void HID_API_EXPORT hid_close(hid_device *dev)
 		IOHIDDeviceRegisterInputReportCallback(
 											   dev->device_handle, dev->input_report_buf, dev->max_input_report_len,
 											   NULL, dev);
-		IOHIDDeviceRegisterRemovalCallback(dev->device_handle, NULL, dev);
 		IOHIDDeviceUnscheduleFromRunLoop(dev->device_handle, dev->run_loop, dev->run_loop_mode);
 		IOHIDDeviceScheduleWithRunLoop(dev->device_handle, CFRunLoopGetMain(), kCFRunLoopDefaultMode);
 	}
@@ -1157,8 +1235,6 @@ int main(void)
 	IOHIDDeviceRef *device_array = calloc(num_devices, sizeof(IOHIDDeviceRef));
 	CFSetGetValues(device_set, (const void **) device_array);
 	
-	setlocale(LC_ALL, "");
-	
 	for (i = 0; i < num_devices; i++) {
 		IOHIDDeviceRef dev = device_array[i];
 		printf("Device: %p\n", dev);
@@ -1181,5 +1257,3 @@ int main(void)
 	return 0;
 }
 #endif
-
-#endif /* SDL_JOYSTICK_HIDAPI */

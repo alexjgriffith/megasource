@@ -30,6 +30,8 @@ Andreas Schiffler -- aschiffler at ferzkopp dot net
 */
 #include "../../SDL_internal.h"
 
+#if SDL_VIDEO_RENDER_SW && !SDL_RENDER_DISABLED
+
 #if defined(__WIN32__)
 #include "../../core/windows/SDL_windows.h"
 #endif
@@ -182,7 +184,7 @@ computeSourceIncrements90(SDL_Surface * src, int bpp, int angle, int flipx, int 
     if (signy < 0) sp += (src->h-1)*src->pitch;                                                             \
                                                                                                             \
     for (dy = 0; dy < dst->h; sp += sincy, dp += dincy, dy++) {                                             \
-        if (sincx == sizeof(pixelType)) { /* if advancing src and dest equally, use memcpy */               \
+        if (sincx == sizeof(pixelType)) { /* if advancing src and dest equally, use SDL_memcpy */           \
             SDL_memcpy(dp, sp, dst->w*sizeof(pixelType));                                                   \
             sp += dst->w*sizeof(pixelType);                                                                 \
             dp += dst->w*sizeof(pixelType);                                                                 \
@@ -437,7 +439,7 @@ SDLgfx_rotateSurface(SDL_Surface * src, double angle, int centerx, int centery, 
     if (!(is8bit || (src->format->BitsPerPixel == 32 && src->format->Amask)))
         return NULL;
 
-    /* Calculate target factors from sin/cos and zoom */
+    /* Calculate target factors from sine/cosine and zoom */
     sangleinv = sangle*65536.0;
     cangleinv = cangle*65536.0;
 
@@ -474,8 +476,8 @@ SDLgfx_rotateSurface(SDL_Surface * src, double angle, int centerx, int centery, 
         SDL_FillRect(rz_dst, NULL, colorkey);
     } else if (blendmode == SDL_BLENDMODE_NONE) {
         blendmode = SDL_BLENDMODE_BLEND;
-    } else if (blendmode == SDL_BLENDMODE_MOD) {
-        /* Without a colorkey, the target texture has to be white for the MOD blend mode so
+    } else if (blendmode == SDL_BLENDMODE_MOD || blendmode == SDL_BLENDMODE_MUL) {
+        /* Without a colorkey, the target texture has to be white for the MOD and MUL blend mode so
          * that the pixels outside the rotated area don't affect the destination surface.
          */
         colorkey = SDL_MapRGBA(rz_dst->format, 255, 255, 255, 0);
@@ -532,3 +534,5 @@ SDLgfx_rotateSurface(SDL_Surface * src, double angle, int centerx, int centery, 
     /* Return rotated surface */
     return rz_dst;
 }
+
+#endif /* SDL_VIDEO_RENDER_SW && !SDL_RENDER_DISABLED */
