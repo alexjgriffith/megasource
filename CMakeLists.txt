@@ -169,6 +169,7 @@ include(CMakeParseArguments)
 
 ## https://github.com/emscripten-core/emscripten/issues/11525
 function(register_module)
+  if(EMSCRIPTEN AND NOT LOVEJS_COMPAT)
     set(OPTIONS)
     cmake_parse_arguments(
             register_module
@@ -183,8 +184,8 @@ function(register_module)
         return()
     endif()
 
-    set(_targetLinkFlags "-s USE_PTHREADS=1")
-    set(_targetCompilerFlags "-s USE_PTHREADS=1")
+    set(_targetLinkFlags "-s USE_PTHREADS=1 -fPIC")
+    set(_targetCompilerFlags "-s USE_PTHREADS=1 -fPIC")
 
     if (register_module_LINKER_FLAGS)
         set(_targetLinkFlags "${_targetLinkFlags} ${register_module_LINKER_FLAGS}")
@@ -197,6 +198,7 @@ function(register_module)
 
     unset(_targetLinkFlags)
     unset(_targetCompilerFlags)
+    endif(EMSCRIPTEN AND NOT LOVEJS_COMPAT)
 endfunction()
 
 set(MEGA_ZLIB_VER "1.2.12")
