@@ -165,6 +165,40 @@ if(MSVC)
 endif()
 
 
+include(CMakeParseArguments)
+
+## https://github.com/emscripten-core/emscripten/issues/11525
+function(register_module)
+    set(OPTIONS)
+    cmake_parse_arguments(
+            register_module
+            "" # No single option arguments
+            "TARGET"
+            "LINKER_FLAGS"
+            ${ARGN}
+    )
+
+    if (NOT register_module_TARGET)
+        message(FATAL_ERROR "TARGET is required!")
+        return()
+    endif()
+
+    set(_targetLinkFlags "-s USE_PTHREADS=1")
+    set(_targetCompilerFlags "-s USE_PTHREADS=1")
+
+    if (register_module_LINKER_FLAGS)
+        set(_targetLinkFlags "${_targetLinkFlags} ${register_module_LINKER_FLAGS}")
+    endif()
+
+    set_target_properties(${register_module_TARGET} PROPERTIES LINK_FLAGS ${_targetLinkFlags})
+    set_target_properties(${register_module_TARGET} PROPERTIES COMPILE_FLAGS ${_targetCompilerFlags})
+
+    message(STATUS " Registered module ${register_module_TARGET}")
+
+    unset(_targetLinkFlags)
+    unset(_targetCompilerFlags)
+endfunction()
+
 set(MEGA_ZLIB_VER "1.2.12")
 set(MEGA_LUA51_VER "5.1.5")
 set(MEGA_LUAJIT_VER "2.1.0-e826d0c")
@@ -192,18 +226,21 @@ message(STATUS "Configuring: zlib ${MEGA_ZLIB_VER}")
 message(STATUS "-----------------------------------------------------")
 add_subdirectory("libs/zlib-${MEGA_ZLIB_VER}" ${CMAKE_BINARY_DIR}/zlib)
 set(MEGA_ZLIB zlibstatic)
+register_module(TARGET zlibstatic)
 
 message(STATUS "-----------------------------------------------------")
 message(STATUS "Configuring: lua ${MEGA_LUA51_VER}")
 message(STATUS "-----------------------------------------------------")
 add_subdirectory("libs/lua-${MEGA_LUA51_VER}" ${CMAKE_BINARY_DIR}/lua51)
 set(MEGA_LUA51 lua51)
+register_module(TARGET lua51)
 
 message(STATUS "-----------------------------------------------------")
 message(STATUS "Configuring: libogg ${MEGA_LIBOGG_VER}")
 message(STATUS "-----------------------------------------------------")
 add_subdirectory("libs/libogg-${MEGA_LIBOGG_VER}" ${CMAKE_BINARY_DIR}/libogg)
 set(MEGA_LIBOGG ogg-static)
+register_module(TARGET ogg-static)
 
 message(STATUS "-----------------------------------------------------")
 message(STATUS "Configuring: libvorbis ${MEGA_LIBVORBIS_VER}")
@@ -211,24 +248,29 @@ message(STATUS "-----------------------------------------------------")
 add_subdirectory("libs/libvorbis-${MEGA_LIBVORBIS_VER}" ${CMAKE_BINARY_DIR}/libvorbis)
 set(MEGA_LIBVORBIS vorbis-static)
 set(MEGA_LIBVORBISFILE vorbisfile-static)
+register_module(TARGET vorbis-static)
+register_module(TARGET vorbisfile-static)
 
 message(STATUS "-----------------------------------------------------")
 message(STATUS "Configuring: libtheora ${MEGA_LIBTHEORA_VER}")
 message(STATUS "-----------------------------------------------------")
 add_subdirectory("libs/libtheora-${MEGA_LIBTHEORA_VER}" ${CMAKE_BINARY_DIR}/libtheora)
 set(MEGA_LIBTHEORA theora-static)
+register_module(TARGET theora-static)
 
 message(STATUS "-----------------------------------------------------")
 message(STATUS "Configuring: mpg123 ${MEGA_MPG123_VER}")
 message(STATUS "-----------------------------------------------------")
 add_subdirectory("libs/mpg123-${MEGA_MPG123_VER}" ${CMAKE_BINARY_DIR}/mpg123)
 set(MEGA_MPEG123 mpg123)
+register_module(TARGET mpg123)
 
 message(STATUS "-----------------------------------------------------")
 message(STATUS "Configuring: freetype ${MEGA_FREETYPE_VER}")
 message(STATUS "-----------------------------------------------------")
 add_subdirectory("libs/freetype-${MEGA_FREETYPE_VER}" ${CMAKE_BINARY_DIR}/freetype)
 set(MEGA_FREETYPE freetype)
+register_module(TARGET freetype)
 
 ## try compiling with native SDL, emscripten documentation says compatibility
 ## changes have been made with the upstream source
@@ -252,7 +294,7 @@ message(STATUS "Configuring: libmodplug ${MEGA_MODPLUG_VER}")
 message(STATUS "-----------------------------------------------------")
 add_subdirectory("libs/libmodplug-${MEGA_MODPLUG_VER}" ${CMAKE_BINARY_DIR}/libmodplug)
 set(MEGA_MODPLUG modplug-static)
-
+register_module(TARGET modplug-static)
 
 ## See if there is a better option than using Lua PUC 5.1 in place of luajit for web
 # LuaJIT
