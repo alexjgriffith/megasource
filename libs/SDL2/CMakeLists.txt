@@ -179,7 +179,7 @@ endif()
 #  for the time being. This default with change to ON once this becomes
 #  commonly supported in browsers or the Emscripten teams makes a single
 #  binary work everywhere.
-if (UNIX_OR_MAC_SYS AND NOT EMSCRIPTEN)
+if (UNIX_OR_MAC_SYS OR EMSCRIPTEN)
   set(SDL_PTHREADS_ENABLED_BY_DEFAULT ON)
 else()
   set(SDL_PTHREADS_ENABLED_BY_DEFAULT OFF)
@@ -344,8 +344,8 @@ if(EMSCRIPTEN)
   # !!! FIXME: most of these subsystems should default to ON if there are dummy implementations to be used.
 
   set(OPT_DEF_ASM FALSE)
-  set(SDL_SHARED_ENABLED_BY_DEFAULT OFF)
-  set(SDL_ATOMIC_ENABLED_BY_DEFAULT OFF)
+  set(SDL_SHARED_ENABLED_BY_DEFAULT ON)
+  set(SDL_ATOMIC_ENABLED_BY_DEFAULT ON)
   set(SDL_LOADSO_ENABLED_BY_DEFAULT OFF)
   set(SDL_CPUINFO_ENABLED_BY_DEFAULT OFF)
 endif()
@@ -1346,6 +1346,7 @@ if(ANDROID)
   endif()
 
 elseif(EMSCRIPTEN)
+  CheckPTHREAD()
   # Hide noisy warnings that intend to aid mostly during initial stages of porting a new
   # project. Uncomment at will for verbose cross-compiling -I/../ path info.
   target_compile_options(sdl-build-options INTERFACE "-Wno-warn-absolute-paths")
