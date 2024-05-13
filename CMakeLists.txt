@@ -276,14 +276,17 @@ register_module(TARGET freetype)
 
 ## try compiling with native SDL, emscripten documentation says compatibility
 ## changes have been made with the upstream source
-if (NOT EMSCRIPTEN)
+
   message(STATUS "-----------------------------------------------------")
   message(STATUS "Configuring: SDL2 ${MEGA_SDL2_VER}")
   message(STATUS "-----------------------------------------------------")
   add_subdirectory("libs/SDL2" ${CMAKE_BINARY_DIR}/SDL2)
-  set(MEGA_SDL2 SDL2)
+  set(MEGA_SDL2 SDL2-static)
   set(MEGA_SDL2MAIN SDL2main)
-
+  register_module(TARGET SDL2-static)
+  register_module(TARGET SDL2main)
+  
+if (NOT EMSCRIPTEN)  
   message(STATUS "-----------------------------------------------------")
   message(STATUS "Configuring: openal-soft ${MEGA_OPENAL_VER}")
   message(STATUS "-----------------------------------------------------")
