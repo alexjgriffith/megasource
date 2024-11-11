@@ -273,7 +273,8 @@ message(STATUS "-----------------------------------------------------")
 add_subdirectory("libs/freetype-${MEGA_FREETYPE_VER}" ${CMAKE_BINARY_DIR}/freetype)
 set(MEGA_FREETYPE freetype)
 register_module(TARGET freetype)
-
+  
+if (NOT EMSCRIPTEN)
 ## try compiling with native SDL, emscripten documentation says compatibility
 ## changes have been made with the upstream source
 
@@ -286,7 +287,6 @@ register_module(TARGET freetype)
   register_module(TARGET SDL2-static)
   register_module(TARGET SDL2main)
   
-if (NOT EMSCRIPTEN)  
   message(STATUS "-----------------------------------------------------")
   message(STATUS "Configuring: openal-soft ${MEGA_OPENAL_VER}")
   message(STATUS "-----------------------------------------------------")
