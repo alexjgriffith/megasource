@@ -167,6 +167,7 @@ endif()
 
 set(MEGA_ZLIB_VER "1.2.12")
 set(MEGA_LUA51_VER "5.1.5")
+set(MEGA_LUA54_VER "5.4.7")
 set(MEGA_LUAJIT_VER "2.1.0-e826d0c")
 set(MEGA_LIBOGG_VER "1.3.2")
 set(MEGA_LIBVORBIS_VER "1.3.5")
@@ -196,6 +197,13 @@ message(STATUS "Configuring: lua ${MEGA_LUA51_VER}")
 message(STATUS "-----------------------------------------------------")
 add_subdirectory("libs/lua-${MEGA_LUA51_VER}" ${CMAKE_BINARY_DIR}/lua51)
 set(MEGA_LUA51 lua51)
+
+
+message(STATUS "-----------------------------------------------------")
+message(STATUS "Configuring: lua ${MEGA_LUA54_VER}")
+message(STATUS "-----------------------------------------------------")
+add_subdirectory("libs/lua-${MEGA_LUA54_VER}" ${CMAKE_BINARY_DIR}/lua54)
+set(MEGA_LUA54 lua54)
 
 message(STATUS "-----------------------------------------------------")
 message(STATUS "Configuring: libogg ${MEGA_LIBOGG_VER}")
@@ -278,7 +286,8 @@ if(MSVC)
 		BUILD_COMMAND "${MEGA_LUAJIT_SOURCE_DIR}/megabuild.bat" $<$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>>:debug> $<$<NOT:$<CONFIG:Debug>>:amalg>
 		INSTALL_COMMAND cmake -E make_directory ${CMAKE_BINARY_DIR}/bin
 			COMMAND cmake -E copy ${MEGA_LUAJIT_SOURCE_DIR}/src/lua51.dll ${CMAKE_BINARY_DIR}/bin
-			COMMAND cmake -E copy ${MEGA_LUAJIT_SOURCE_DIR}/src/lua51.lib ${CMAKE_BINARY_DIR}/bin)
+			COMMAND cmake -E copy ${MEGA_LUAJIT_SOURCE_DIR}/src/lua51.lib ${CMAKE_BINARY_DIR}/bin
+                      )
 
 	set(MEGA_LUAJIT_LIB ${CMAKE_BINARY_DIR}/bin/lua51.lib)
 	set(MEGA_LUAJIT_DLL ${CMAKE_BINARY_DIR}/bin/lua51.dll)
@@ -289,6 +298,7 @@ endif()
 set(MEGA_3P
 	${MEGA_ZLIB}
 	${MEGA_LUA51}
+        ${MEGA_LUA54}
 	${MEGA_LIBOGG}
 	${MEGA_LIBVORBIS}
 	${MEGA_LIBVORBISFILE}
@@ -332,3 +342,4 @@ add_move_dll(megatest ${MEGA_MPEG123})
 add_move_dll(megatest ${MEGA_SDL2})
 add_move_dll(megatest ${MEGA_OPENAL})
 add_move_dll(megatest ${MEGA_LUA51})
+add_move_dll(megatest ${MEGA_LUA54})
